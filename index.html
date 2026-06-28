@@ -205,6 +205,13 @@ h2{font-size:clamp(20px,5.5vw,28px);font-weight:700;}
   <div class="bubble" id="selectGreet"></div>
   <p style="color:var(--lav);font-size:clamp(14px,4vw,18px);margin:4px 0;">今天选哪个冒险？</p>
   <div id="adventureList" style="display:flex;flex-direction:column;gap:10px;width:min(340px,90vw);margin-top:6px;"></div>
+  <div style="margin-top:14px;width:min(340px,90vw);border-top:1px solid rgba(255,255,255,.1);padding-top:12px;">
+    <p style="color:rgba(255,255,255,.35);font-size:clamp(12px,3.2vw,14px);margin-bottom:8px;">或者直接跳到故事</p>
+    <button onclick="startStorybook('bunny-home')" style="background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.2);border-radius:16px;padding:12px 20px;font-size:clamp(15px,4vw,18px);font-weight:600;color:rgba(255,255,255,.7);cursor:pointer;font-family:inherit;width:100%;display:flex;align-items:center;gap:12px;transition:background .15s;">
+      <span style="font-size:clamp(24px,7vw,32px);">📚</span>
+      <span>跳跳小兔子回家</span>
+    </button>
+  </div>
 </div>
 
 <!-- ══════════ MAIN ADVENTURE SCREEN ══════════ -->
@@ -345,6 +352,11 @@ function getBunnyStory(n1, n2){
         mood: 'sleepy',
         text: `今天跳跳安全回家啦。还有最后一点点故事……请爸爸妈妈抱着${n1}和${n2}，把最后几页读给你们听。`,
         lumiGoodnight: true,
+        parentPages: [
+          `兔妈妈轻轻抱起跳跳，说："今天你真棒，自己找到了回家的路。" 跳跳打了一个小小的哈欠……`,
+          `窗外的星星一颗一颗亮起来。跳跳闭上眼睛，心里还记着今天的胡萝卜，还有帮助它的朋友。`,
+          `${n1}，${n2}，你们今天也很棒。 闭上眼睛，Lumi在星星上等你们。晚安。🌟`,
+        ],
       },
     ]
   };
@@ -982,9 +994,7 @@ function runSbPage(){
   document.getElementById('sbContent').innerHTML='';
   document.getElementById('sbAction').innerHTML='';
 
-  // speak
-  speak(page.text||'');
-
+  // renderers own their speak calls
   // render
   switch(page.pageType){
     case 'narrate': renderSbNarrate(page); break;
@@ -1028,7 +1038,10 @@ function renderSbNarrate(page){
   const c=document.getElementById('sbContent');
   c.innerHTML=sbScene(page.scene)+sbTextBox(page.text);
   if(page.autoNext){
-    sbAutoTimer=setTimeout(()=>sbNext(), page.duration||4000);
+    // wait for speech to finish, then grace period
+    speak(page.text, 1.05, 1.4, ()=>{
+      sbAutoTimer=setTimeout(()=>sbNext(), 2000);
+    });
   } else {
     sbSetAction(`<button class="btn g" onclick="sbNext()">继续 ▶️</button>`);
   }
@@ -1062,6 +1075,7 @@ function renderSbJump(page){
 
 // ── DRAG ──
 function renderSbDrag(page){
+  speak(page.text);
   const c=document.getElementById('sbContent');
   c.innerHTML=sbScene(page.scene,'pop')+sbTextBox(page.text)+`
     <p style="font-size:clamp(15px,4vw,18px);color:var(--lav);margin:4px 0">${page.instruction}</p>
@@ -1115,6 +1129,7 @@ function renderSbDrag(page){
 
 // ── HUG ──
 function renderSbHug(page){
+  speak(page.text);
   const c=document.getElementById('sbContent');
   c.innerHTML=sbScene(page.scene)+sbTextBox(page.text)+`
     <p style="font-size:clamp(15px,4vw,18px);color:var(--lav);margin:4px 0">${page.instruction}</p>
@@ -1132,6 +1147,7 @@ function doHug(){
 
 // ── TAP LIGHT ──
 function renderSbTap(page){
+  speak(page.text);
   const c=document.getElementById('sbContent');
   c.innerHTML=sbScene('🌑')+sbTextBox(page.text)+`
     <p style="font-size:clamp(15px,4vw,18px);color:var(--lav);margin:4px 0">${page.instruction}</p>
@@ -1159,6 +1175,7 @@ function renderSbShout(page){
 
 // ── BRUSH (simple, no game — just do it together) ──
 function renderSbBrush(page){
+  speak(page.text);
   const c=document.getElementById('sbContent');
   c.innerHTML=sbScene(page.scene)+sbTextBox(page.text)+`
     <div style="font-size:clamp(52px,15vw,72px);margin:6px 0;animation:moveBounce 1s ease-in-out infinite">🪥</div>`;
@@ -1185,25 +1202,78 @@ function renderSbFinale(page){
     <div id="lumiFinale" style="font-size:clamp(64px,18vw,96px);margin:12px 0;transition:all 3s ease;filter:drop-shadow(0 0 20px #ffd700)">⭐</div>`;
   setLumiMood('sleepy','sbLumiStar');
 
-  // speak, then Lumi flies away
   speak(page.text, 0.78, 1.05, ()=>{
     setTimeout(()=>{
       speak('晚安。', 0.7, 1.0, ()=>{
-        // star flies up and fades
+        // star flies up
         setTimeout(()=>{
           const star=document.getElementById('lumiFinale');
           if(star){ star.style.transform='translateY(-200px) scale(0.1)'; star.style.opacity='0'; }
           // darken screen
           setTimeout(()=>{
             document.getElementById('bedtimeOverlay').classList.add('fade');
+            // after dark, show parent card
+            setTimeout(()=>showParentCard(page.parentPages||[]), 3500);
           }, 2000);
         }, 800);
       });
     }, 1000);
   });
 
-  // no buttons — screen just fades to black
   sbSetAction('');
+}
+
+// ── PARENT CARD ──────────────────────────────────────────────────────────
+let parentPageIdx = 0;
+function showParentCard(pages){
+  if(!pages||pages.length===0) return;
+  parentPageIdx = 0;
+  const overlay = document.getElementById('bedtimeOverlay');
+  // inject parent card on top of dark overlay
+  let card = document.getElementById('parentCard');
+  if(!card){
+    card = document.createElement('div');
+    card.id = 'parentCard';
+    card.style.cssText=`
+      position:fixed;inset:0;z-index:160;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;padding:32px 28px;text-align:center;
+    `;
+    document.body.appendChild(card);
+  }
+  renderParentPage(pages);
+}
+
+function renderParentPage(pages){
+  const card = document.getElementById('parentCard');
+  if(!card) return;
+  const text = pages[parentPageIdx]||'';
+  const isLast = parentPageIdx >= pages.length-1;
+  card.innerHTML=`
+    <p style="font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.4);margin-bottom:16px;text-transform:uppercase;">爸爸妈妈轻声读给孩子听 🌙</p>
+    <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:24px 28px;max-width:min(380px,90vw);">
+      <p style="font-size:clamp(18px,5vw,24px);line-height:1.8;color:rgba(255,255,255,.9);font-weight:500;">${text}</p>
+    </div>
+    <p style="font-size:13px;color:rgba(255,255,255,.3);margin-top:12px;">${parentPageIdx+1} / ${pages.length}</p>
+    <div style="margin-top:20px;">
+      ${isLast
+        ? `<button onclick="closeParentCard()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:40px;padding:12px 28px;font-size:16px;color:rgba(255,255,255,.7);cursor:pointer;font-family:inherit;">晚安 🌟</button>`
+        : `<button onclick="parentNextPage(${JSON.stringify(pages).replace(/"/g,'&quot;')})" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:40px;padding:12px 28px;font-size:16px;color:rgba(255,255,255,.7);cursor:pointer;font-family:inherit;">下一句 ▶</button>`
+      }
+    </div>`;
+  speak(text, 0.72, 1.0);
+}
+
+function parentNextPage(pages){
+  parentPageIdx++;
+  renderParentPage(pages);
+}
+
+function closeParentCard(){
+  const card=document.getElementById('parentCard');
+  if(card) card.remove();
+  document.getElementById('bedtimeOverlay').classList.remove('fade');
+  synth.cancel();
+  goHome();
 }
 
 // input polish
